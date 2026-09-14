@@ -7,7 +7,7 @@ library(bestNormalize)
 ## we start with the data of the scanner update dataset
 ## we will ave to load the data and harmonize column names to get everything into one dataset
 ## first we load the samseg data
-samseg_update <- read.csv("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/samseg/results_summary.csv")
+samseg_update <- read.csv("scanner_update/samseg/results_summary.csv")
 # create id, scanner and segmentation col
 samseg_update$id <- sub("_.*$", "", samseg_update$participant)
 samseg_update$scanner <-  ifelse(grepl("SKYRA", samseg_update$participant), "SKYRA", "VERIO")
@@ -56,7 +56,7 @@ samseg_update <- samseg_update %>%
 
 
 ## now we load the v 7.4.0 recon-all data
-recon7_update <- read.delim("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/recon/aseg_stats.txt")
+recon7_update <- read.delim("scanner_update/recon/aseg_stats.txt")
 # create id, scanner and segmentation col
 recon7_update$id <- sub("_.*$", "", recon7_update$Measure.volume)
 recon7_update$scanner <-  ifelse(grepl("SKYRA", recon7_update$Measure.volume), "SKYRA", "VERIO")
@@ -78,16 +78,16 @@ recon7_update <- recon7_update %>%
 
 ## now we can load the cat 12 data
 # load the table according to the neuromorphometrics atlas 
-cat_update_csf <- read.csv("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/cat/ROI_neuromorphometrics_Vcsf.csv")
-cat_update_gm <- read.csv("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/cat/ROI_neuromorphometrics_Vgm.csv")
-cat_update_wm <- read.csv("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/cat/ROI_neuromorphometrics_Vwm.csv")
+cat_update_csf <- read.csv("scanner_update/cat/ROI_neuromorphometrics_Vcsf.csv")
+cat_update_gm <- read.csv("scanner_update/cat/ROI_neuromorphometrics_Vgm.csv")
+cat_update_wm <- read.csv("scanner_update/cat/ROI_neuromorphometrics_Vwm.csv")
 # add them up
 cat_update <- cat_update_gm[,2:ncol(cat_update_gm)] + cat_update_wm[,2:ncol(cat_update_wm)] + cat_update_csf[,2:ncol(cat_update_csf)] 
 # create id and scanner cols
 cat_update$id <- sub(".*/([^/_]+)_.*", "\\1", cat_update_gm$names)
 cat_update$scanner <- ifelse(grepl("SKYRA", cat_update_gm$names), "SKYRA", "VERIO")
 # load dfs with global measures
-cat_update_global_measures <- read.delim("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/cat/TIV.txt", col.names = c("path", "TIV", "TGMV", "TWMV", "CSF", "WMHV"), header = F)
+cat_update_global_measures <- read.delim("scanner_update/cat/TIV.txt", col.names = c("path", "TIV", "TGMV", "TWMV", "CSF", "WMHV"), header = F)
 cat_update_global_measures$id <- sub(".*/([^/_]+)_.*", "\\1", cat_update_global_measures$path)
 cat_update_global_measures$scanner <- ifelse(grepl("SKYRA", cat_update_global_measures$path), "SKYRA", "VERIO")
 # merge the two dfs
@@ -185,13 +185,13 @@ df_update$LVV <- asinh(df_update$LVV)
 df_update_no_correction <- df_update[df_update$correction.necessary == 0,]
 
 # save dfs for harmonization
-write.csv(df_update, file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/Data/df_update.csv")
-write.csv(df_update_no_correction, file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/Data/df_update_no_correction.csv")
+write.csv(df_update, file = "scanner_update/Data/df_update.csv")
+write.csv(df_update_no_correction, file = "scanner_update/Data/df_update_no_correction.csv")
 
 # now we prepare the scanner update WML data
 
 # load segmented data
-wmhv_update <- read.csv("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/wmhv/results_summary.csv")
+wmhv_update <- read.csv("scanner_update/wmhv/results_summary.csv")
 # create id, scanner and segmentation col
 wmhv_update$id <- wmhv_update$participant
 wmhv_update$SITE <-  ifelse(grepl("skyra", wmhv_update$scanner), "SKYRA", "VERIO")
@@ -204,7 +204,7 @@ wmhv_update[wmhv_update$SITE == "VERIO", "WMHV_norm"] <- bn$x.t[(1+length(wmhv_u
 wmhv_update <- merge(wmhv_update, df_update[!duplicated(df_update$id),c("id", "age", "gender")], by = "id", all.x = T)
 
 # save df for harmonization
-write.csv(wmhv_update, file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/Data/wmhv_update.csv")
+write.csv(wmhv_update, file = "scanner_update/Data/wmhv_update.csv")
 
 ######################## now we can load the segmented LIFE data ############################
 # we start with the samseg data (both long and cross pipeline)
@@ -287,8 +287,8 @@ lst_life <- lst_life %>%
 lst_life$wmhv_usable <- ifelse(lst_life$qa_LST_fu != 0, 0, 1)
 
 # now we load the FS v 5.3.0 segmentations of the LIFE data (long and cross piepline)
-recon5_life <- read.delim("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/aseg530_stats.txt")
-recon5_cross_life <- read.delim("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/aseg530_cross_stats.txt")
+recon5_life <- read.delim("life/Data/aseg530_stats.txt")
+recon5_cross_life <- read.delim("life/Data/aseg530_cross_stats.txt")
 # create id, timepoint and segmentation col
 # drop everything after the first .
 recon5_life$id <- sub("\\..*$", "", recon5_life$Measure.volume)
@@ -343,7 +343,7 @@ QC <- QC %>%
     names_sep = "_"
   )
 # read age and gender for LIFE-Adult dataset
-life_age_gender <- read.csv("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/Data/life_age_gender.csv")
+life_age_gender <- read.csv("scanner_update/Data/life_age_gender.csv")
 # merge with samseg
 samseg_life <- merge(samseg_life, life_age_gender, by = c("id", "timepoint"))
 # scale age
@@ -417,20 +417,20 @@ df_life <- df_life[complete.cases(df_life),]
 df_life_no_correction <- df_life[df_life$corrected == 0,]
 
 # save files (save cross and long runs separately)
-write.csv(df_life[!grepl("cross", df_life$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life.csv", row.names = F)
-write.csv(df_life_no_correction[!grepl("cross", df_life_no_correction$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_no_correction.csv", row.names = F)
-write.csv(df_life[grepl("cross", df_life$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_cross.csv", row.names = F)
-write.csv(df_life_wmhv, file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_wmhv.csv", row.names = F)
+write.csv(df_life[!grepl("cross", df_life$SITE),], file = "life/Data/df_life.csv", row.names = F)
+write.csv(df_life_no_correction[!grepl("cross", df_life_no_correction$SITE),], file = "life/Data/df_life_no_correction.csv", row.names = F)
+write.csv(df_life[grepl("cross", df_life$SITE),], file = "life/Data/df_life_cross.csv", row.names = F)
+write.csv(df_life_wmhv, file = "life/Data/df_life_wmhv.csv", row.names = F)
 # save BL and FU values separately for neuroharmonize
-write.csv(df_life[df_life$timepoint == "BL" & !grepl("cross", df_life$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_bl.csv", row.names = F)
-write.csv(df_life_no_correction[df_life_no_correction$timepoint == "BL" & !grepl("cross", df_life_no_correction$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_no_correction_bl.csv", row.names = F)
-write.csv(df_life[df_life$timepoint == "BL" & grepl("cross", df_life$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_cross_bl.csv", row.names = F)
-write.csv(df_life_wmhv[df_life_wmhv$timepoint == "BL",], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_wmhv_bl.csv", row.names = F)
+write.csv(df_life[df_life$timepoint == "BL" & !grepl("cross", df_life$SITE),], file = "life/Data/df_life_bl.csv", row.names = F)
+write.csv(df_life_no_correction[df_life_no_correction$timepoint == "BL" & !grepl("cross", df_life_no_correction$SITE),], file = "life/Data/df_life_no_correction_bl.csv", row.names = F)
+write.csv(df_life[df_life$timepoint == "BL" & grepl("cross", df_life$SITE),], file = "life/Data/df_life_cross_bl.csv", row.names = F)
+write.csv(df_life_wmhv[df_life_wmhv$timepoint == "BL",], file = "life/Data/df_life_wmhv_bl.csv", row.names = F)
 
-write.csv(df_life[df_life$timepoint == "FU" & !grepl("cross", df_life$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_fu.csv", row.names = F)
-write.csv(df_life_no_correction[df_life_no_correction$timepoint == "FU" & !grepl("cross", df_life_no_correction$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_no_correction_fu.csv", row.names = F)
-write.csv(df_life[df_life$timepoint == "FU" & grepl("cross", df_life$SITE),], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_cross_fu.csv", row.names = F)
-write.csv(df_life_wmhv[df_life_wmhv$timepoint == "FU",], file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_wmhv_fu.csv", row.names = F)
+write.csv(df_life[df_life$timepoint == "FU" & !grepl("cross", df_life$SITE),], file = "life/Data/df_life_fu.csv", row.names = F)
+write.csv(df_life_no_correction[df_life_no_correction$timepoint == "FU" & !grepl("cross", df_life_no_correction$SITE),], file = "life/Data/df_life_no_correction_fu.csv", row.names = F)
+write.csv(df_life[df_life$timepoint == "FU" & grepl("cross", df_life$SITE),], file = "life/Data/df_life_cross_fu.csv", row.names = F)
+write.csv(df_life_wmhv[df_life_wmhv$timepoint == "FU",], file = "life/Data/df_life_wmhv_fu.csv", row.names = F)
 
 ### calculate change scores for an exploratory analysis
 # first turn the dataframes into a wide format
@@ -501,5 +501,5 @@ df_life_wmhv_wide <- df_life_wmhv_wide %>%
   left_join(df_life_wmhv[df_life_wmhv$timepoint == "BL",c("id", "AGE", "GENDER")], by = "id") %>% distinct()
 
 # save the dfs for harmonization
-write.csv(df_life_wide, file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_changes.csv", row.names = F)
-write.csv(df_life_wmhv_wide, file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/df_life_wmhv_changes.csv", row.names = F)
+write.csv(df_life_wide, file = "life/Data/df_life_changes.csv", row.names = F)
+write.csv(df_life_wmhv_wide, file = "life/Data/df_life_wmhv_changes.csv", row.names = F)
