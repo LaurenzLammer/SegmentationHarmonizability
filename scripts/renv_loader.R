@@ -8,4 +8,4 @@ if (!requireNamespace("renv", quietly = TRUE)) {
 # Then load it
 library(renv)
 # restore from lockfile on github
-renv::restore(lockfile = "https://raw.githubusercontent.com/LaurenzLammer/SegmentationHarmonizability/main/renv/renv.lock")
+renv::restore(lockfile = "https://raw.githubusercontent.com/LaurenzLammer/SegmentationHarmonizability/main/renv.lock")
