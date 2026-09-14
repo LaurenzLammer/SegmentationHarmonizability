@@ -25,20 +25,20 @@
 
 # load required packages
 library(tidyverse) # version 2.0.0
-library(lme4) # version 1.1-38
-library(rstatix) # version 0.7.3
-library(glue) # version 1.8.0
-library(lavaan) # version 0.6-21
+library(lme4) # version 2.0-6
+library(rstatix) # version 1.1.0
+library(glue) # version 1.8.1
+library(lavaan) # version 0.7-2
 library(BlandAltmanLeh) # version 0.3.1
-library(patchwork) # version 1.3.1
-library(showtext) # 0.9-7
+library(patchwork) # version 1.3.2
+library(showtext) # 0.9-8
+library(car) # 3.1-5
 
 set.seed(1848)
 
 ############ Section 1: The scanner update dataset #######################
-setwd("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/Data/")
 # load the unadjusted data from the scanner update study 
-df_update <- read.csv("df_update.csv")
+df_update <- read.csv("scanner_update/Data/df_update.csv")
 # break each scanner-segmentation combination down to a scanner and a segmentation variable
 df_update$scanner <- ifelse(grepl("VER", df_update$SITE), "VERIO", "SKYRA")
 df_update <- df_update %>%
@@ -50,13 +50,13 @@ df_update <- df_update %>%
   ))
 
 # load the adjusted data from the scanner update study 
-df_update_adj <- read.csv("df_update_adj.csv", col.names = colnames(df_update)[5:11])
+df_update_adj <- read.csv("scanner_update/Data/df_update_adj.csv", col.names = colnames(df_update)[5:11])
 # fill in the missing data from the unadjusted df (these cols must not be included during harmonization) 
 df_update_adj[,c("id", "scanner", "segmentation", "SITE")] <- df_update[,c("id", "scanner", "segmentation", "SITE")]
 
 # repeat for the dataset excluding participants with manual editing
 # load the unadjusted data from the scanner update study 
-df_update_no_correction <- read.csv("df_update_no_correction.csv")
+df_update_no_correction <- read.csv("scanner_update/Data/df_update_no_correction.csv")
 # break each scanner-segmentation combination down to a scanner and a segmentation variable
 df_update_no_correction$scanner <- ifelse(grepl("VER", df_update_no_correction$SITE), "VERIO", "SKYRA")
 df_update_no_correction <- df_update_no_correction %>%
@@ -68,7 +68,7 @@ df_update_no_correction <- df_update_no_correction %>%
   ))
 
 # load the adjusted data from the scanner update study 
-df_update_no_correction_adj <- read.csv("df_update_no_correction_adj.csv", col.names = colnames(df_update_no_correction)[5:11])
+df_update_no_correction_adj <- read.csv("scanner_update/Data/df_update_no_correction_adj.csv", col.names = colnames(df_update_no_correction)[5:11])
 # fill in the missing data from the unadjusted df (these cols must not be included during harmonization) 
 df_update_no_correction_adj[,c("id", "scanner", "segmentation", "SITE")] <- df_update_no_correction[,c("id", "scanner", "segmentation", "SITE")]
 
@@ -167,8 +167,9 @@ for (outcome in c("TIV", "TGMV", "TWMV", "TCV", "LVV",  "HCV", "AV")) {
 }
 
 ############ Section 1.2: Calculation of PDs #######################
+############ Section 1.2.1: Calculation of directed PDs #######################
 # prepare a list to store the pd_matrices
-update_pd_matrices <- list()
+update_dir_pd_matrices <- list()
 # iterate over ROIs
 for (outcome in c("TIV", "TGMV", "TWMV", "TCV", "LVV",  "HCV", "AV")) {
   # iterate over datasets
@@ -206,7 +207,50 @@ for (outcome in c("TIV", "TGMV", "TWMV", "TCV", "LVV",  "HCV", "AV")) {
     # turn into percentage values
     mean_pd_mat <- mean_pd_mat*100
     # save variables to list
-    update_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
+    update_dir_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
+  }
+}
+
+############ Section 1.2.2: Calculation of undirected PDs #######################
+# prepare a list to store the pd_matrices
+update_undir_pd_matrices <- list()
+# iterate over ROIs
+for (outcome in c("TIV", "TGMV", "TWMV", "TCV", "LVV",  "HCV", "AV")) {
+  # iterate over datasets
+  for (df_name in names(update_wide_dfs)){
+    df <- update_wide_dfs[[df_name]]
+    suffix <- substr(df_name,10,nchar(df_name)-5)
+    # drop the SKYRA-recon6 TIV col
+    df$TIV_SKYRA_recon6 <- NULL
+    # get names of relevant cols
+    roi_cols <- grep(outcome, colnames(df), value = TRUE)
+    # initialize empty matrix
+    mean_pd_mat <- matrix(
+      NA_real_,
+      nrow = length(roi_cols),
+      ncol = length(roi_cols),
+      dimnames = list(roi_cols, roi_cols)
+    )
+    # fill upper triangle
+    for (i in seq_along(roi_cols)) {
+      for (j in seq_along(roi_cols)) {
+        if (i < j) {
+          # extract all values in the 2 relevant cols
+          col1 <- df[[roi_cols[i]]]
+          col2 <- df[[roi_cols[j]]]
+          # calculate a vector of PDs
+          pd <- abs((2 * (col1 - col2))) / (abs(col1) + abs(col2))
+          # calculate the mean PD between the two batches (NAs exist because 5 participants were not scanned on both scanners)
+          mean_pd_mat[i, j] <- mean(pd, na.rm = TRUE)
+        }
+      }
+    }
+    # mirror the inverse to lower triangle
+    mean_pd_mat[lower.tri(mean_pd_mat)] <- t(mean_pd_mat)[lower.tri(mean_pd_mat)] * (-1)
+    # turn into percentage values
+    mean_pd_mat <- mean_pd_mat*100
+    # save variables to list
+    update_undir_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
   }
 }
 
@@ -417,7 +461,7 @@ for (outcome in c("TIV", "TGMV", "TWMV", "TCV", "LVV",  "HCV", "AV")) {
     for (combination in combs){
       plt <- bland.altman.plot(group1 = df[[combination[1]]], group2 = df[[combination[2]]], 
                                graph.sys = "ggplot2", conf.int=.95, pch=19)
-      plt <- plt + labs(title = paste0(gsub("_", " ", combination[1]), " vs. ", gsub("_", " ", combination[2]))) + theme_bw(base_family = "garamond") + 
+      plt <- plt + labs(title = paste0(gsub("_", " ", combination[1]), " vs. ", gsub("_", " ", combination[2]))) + theme_bw(base_family = "Helvetica") + 
         theme(plot.title = element_text(hjust = 0.5, size = 12))
       plot_list[[paste0(combination[1], " vs. ", combination[2])]] <- plt
     }
@@ -436,43 +480,49 @@ for (outcome in c("TIV", "TGMV", "TWMV", "TCV", "LVV",  "HCV", "AV")) {
   }
 }
 ############ Section 2: The LIFE-Adult dataset #######################
-# switch working directory
-setwd("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/life/Data/")
 # load the unadjusted data from the LIFE_Adult study
-df_life <- read.csv(file = "df_life.csv") 
-df_life_wmhv <- read.csv(file = "df_life_wmhv.csv") 
-df_life_no_correction <- read.csv(file = "df_life_no_correction.csv") 
+df_life <- read.csv(file = "life/Data/df_life.csv") 
+df_life_wmhv <- read.csv(file = "life/Data/df_life_wmhv.csv") 
+df_life_no_correction <- read.csv(file = "life/Data/df_life_no_correction.csv") 
 
-# load the data adjusted using loongitudinal ComBat
-df_life_combat <- read.csv(file = "df_life_adj.csv") 
-df_life_wmhv_combat <- read.csv(file = "df_life_wmhv_adj.csv") 
-df_life_combat_no_correction <- read.csv(file = "df_life_no_correction_adj.csv") 
+# load the data adjusted using longitudinal ComBat
+df_life_combat <- read.csv(file = "life/Data/df_life_adj.csv") 
+df_life_wmhv_combat <- read.csv(file = "life/Data/df_life_wmhv_adj.csv") 
+df_life_combat_no_correction <- read.csv(file = "life/Data/df_life_no_correction_adj.csv") 
 # align names with other dfs (delete suffix .combat)
 colnames(df_life_combat) <- gsub("\\.combat$", "", colnames(df_life_combat))
 colnames(df_life_wmhv_combat) <- gsub("\\.combat$", "", colnames(df_life_wmhv_combat))
 colnames(df_life_combat_no_correction) <- gsub("\\.combat$", "", colnames(df_life_combat_no_correction))
 
+# load the data adjusted using longitudinal ComBat with one random intercept per id across batches
+df_life_combat_interbatch <- read.csv(file = "life/Data/df_life_adj_interbatch.csv") 
+df_life_wmhv_combat_interbatch <- read.csv(file = "life/Data/df_life_wmhv_adj_interbatch.csv") 
+# align names with other dfs (delete suffix .combat)
+colnames(df_life_combat_interbatch) <- gsub("\\.combat$", "", colnames(df_life_combat_interbatch))
+colnames(df_life_wmhv_combat_interbatch) <- gsub("\\.combat$", "", colnames(df_life_wmhv_combat_interbatch))
+
+
 # load the data adjusted using neuroHarmonize and their unadjusted counterparts
-df_life_nh_bl <- read.csv(file = "df_life_bl_adj.csv")
-df_life_nh_fu <- read.csv(file = "df_life_fu_adj.csv")
-df_life_bl <- read.csv(file = "df_life_bl.csv")
-df_life_fu <- read.csv(file = "df_life_fu.csv")
+df_life_nh_bl <- read.csv(file = "life/Data/df_life_bl_adj.csv")
+df_life_nh_fu <- read.csv(file = "life/Data/df_life_fu_adj.csv")
+df_life_bl <- read.csv(file = "life/Data/df_life_bl.csv")
+df_life_fu <- read.csv(file = "life/Data/df_life_fu.csv")
 df_life_nh_bl[,c("id", "timepoint", "SITE", "AGE", "GENDER")] <- df_life_bl[,c("id", "timepoint", "SITE", "AGE", "GENDER")]
 df_life_nh_fu[,c("id", "timepoint", "SITE", "AGE", "GENDER")] <- df_life_fu[,c("id", "timepoint", "SITE", "AGE", "GENDER")]
 df_life_nh <- rbind(df_life_nh_bl, df_life_nh_fu)
 
-df_life_no_correction_nh_bl <- read.csv(file = "df_life_no_correction_bl_adj.csv")
-df_life_no_correction_nh_fu <- read.csv(file = "df_life_no_correction_fu_adj.csv")
-df_life_no_correction_bl <- read.csv(file = "df_life_no_correction_bl.csv")
-df_life_no_correction_fu <- read.csv(file = "df_life_no_correction_fu.csv")
+df_life_no_correction_nh_bl <- read.csv(file = "life/Data/df_life_no_correction_bl_adj.csv")
+df_life_no_correction_nh_fu <- read.csv(file = "life/Data/df_life_no_correction_fu_adj.csv")
+df_life_no_correction_bl <- read.csv(file = "life/Data/df_life_no_correction_bl.csv")
+df_life_no_correction_fu <- read.csv(file = "life/Data/df_life_no_correction_fu.csv")
 df_life_no_correction_nh_bl[,c("id", "timepoint", "SITE", "AGE", "GENDER")] <- df_life_no_correction_bl[,c("id", "timepoint", "SITE", "AGE", "GENDER")]
 df_life_no_correction_nh_fu[,c("id", "timepoint", "SITE", "AGE", "GENDER")] <- df_life_no_correction_fu[,c("id", "timepoint", "SITE", "AGE", "GENDER")]
 df_life_nh_no_correction <- rbind(df_life_no_correction_nh_bl, df_life_no_correction_nh_fu)
 
-df_life_wmhv_nh_bl <- read.csv(file = "df_life_wmhv_bl_adj.csv")
-df_life_wmhv_nh_fu <- read.csv(file = "df_life_wmhv_fu_adj.csv")
-df_life_wmhv_bl <- read.csv(file = "df_life_wmhv_bl.csv")
-df_life_wmhv_fu <- read.csv(file = "df_life_wmhv_fu.csv")
+df_life_wmhv_nh_bl <- read.csv(file = "life/Data/df_life_wmhv_bl_adj.csv")
+df_life_wmhv_nh_fu <- read.csv(file = "life/Data/df_life_wmhv_fu_adj.csv")
+df_life_wmhv_bl <- read.csv(file = "life/Data/df_life_wmhv_bl.csv")
+df_life_wmhv_fu <- read.csv(file = "life/Data/df_life_wmhv_fu.csv")
 df_life_wmhv_nh_bl[,c("id", "timepoint", "SITE", "AGE", "GENDER")] <- df_life_wmhv_bl[,c("id", "timepoint", "SITE", "AGE", "GENDER")]
 df_life_wmhv_nh_fu[,c("id", "timepoint", "SITE", "AGE", "GENDER")] <- df_life_wmhv_fu[,c("id", "timepoint", "SITE", "AGE", "GENDER")]
 df_life_wmhv_nh <- rbind(df_life_wmhv_nh_bl, df_life_wmhv_nh_fu)
@@ -493,14 +543,16 @@ df_life_wmhv_nh_fu <- df_life_wmhv_nh[df_life_wmhv_nh$timepoint == "FU",]
 df_life_wmhv_combat_fu <- df_life_wmhv_combat[df_life_wmhv_combat$timepoint == "FU",]
 
 # for a further sensitivity analysis, load the data from the cross pipeline
-df_life_cross_combat <- read.csv(file = "df_life_cross_adj.csv") 
+df_life_cross <- read.csv(file = "life/Data/df_life_cross.csv") 
+df_life_cross$SITE <- gsub("_cross", "", df_life_cross$SITE)
+df_life_cross_combat <- read.csv(file = "life/Data/df_life_cross_adj.csv") 
 colnames(df_life_cross_combat) <- gsub("\\.combat$", "", colnames(df_life_cross_combat))
 df_life_cross_combat$SITE <- gsub("_cross", "", df_life_cross_combat$SITE)
-# load the data adjusted using neuroHarmonize and their unadjusted counterparts
-df_life_nh_cross_bl <- read.csv(file = "df_life_cross_bl_adj.csv")
-df_life_nh_cross_fu <- read.csv(file = "df_life_cross_fu_adj.csv")
-df_life_cross_bl <- read.csv(file = "df_life_cross_bl.csv")
-df_life_cross_fu <- read.csv(file = "df_life_cross_fu.csv")
+# load the data from the cross pipeline adjusted using neuroHarmonize and their unadjusted counterparts
+df_life_nh_cross_bl <- read.csv(file = "life/Data/df_life_cross_bl_adj.csv")
+df_life_nh_cross_fu <- read.csv(file = "life/Data/df_life_cross_fu_adj.csv")
+df_life_cross_bl <- read.csv(file = "life/Data/df_life_cross_bl.csv")
+df_life_cross_fu <- read.csv(file = "life/Data/df_life_cross_fu.csv")
 df_life_nh_cross_bl[,c("id", "timepoint", "SITE", "AGE", "GENDER")] <- df_life_cross_bl[,c("id", "timepoint", "SITE", "AGE", "GENDER")]
 df_life_nh_cross_fu[,c("id", "timepoint", "SITE", "AGE", "GENDER")] <- df_life_cross_fu[,c("id", "timepoint", "SITE", "AGE", "GENDER")]
 df_life_cross_nh <- rbind(df_life_nh_cross_bl, df_life_nh_cross_fu)
@@ -511,8 +563,9 @@ df_life_cross_nh$SITE <- gsub("_cross", "", df_life_cross_nh$SITE)
 life_dfs <- list(df_life = df_life, df_life_combat = df_life_combat, df_life_nh = df_life_nh,
                  df_life_no_correction = df_life_no_correction, df_life_combat_no_correction = 
                    df_life_combat_no_correction, df_life_nh_no_correction = df_life_nh_no_correction, 
+                 df_life_cross = df_life_cross, df_life_combat_interbatch = df_life_combat_interbatch, 
                  df_life_cross_combat = df_life_cross_combat, df_life_cross_nh = df_life_cross_nh)
-life_wmhv_dfs <- list(df_life_wmhv = df_life_wmhv, df_life_wmhv_combat = df_life_wmhv_combat, df_life_wmhv_nh = df_life_wmhv_nh)
+life_wmhv_dfs <- list(df_life_wmhv = df_life_wmhv, df_life_wmhv_combat = df_life_wmhv_combat, df_life_wmhv_combat_interbatch = df_life_wmhv_combat_interbatch, df_life_wmhv_nh = df_life_wmhv_nh)
 
 # turn dfs into wide format
 life_wide_dfs <- lapply(life_dfs, function(x)
@@ -638,7 +691,7 @@ icc_ci <- function(fit) {
 }
 
 # calculate LMEs
-# iterate over no wmhv_outcomes
+# iterate over non-wmhv_outcomes
 for (outcome in c("dTGMV", "dTCV", "dLVV",  "dHCV", "dAV")) {
   # iterate over dfs
   for (df_name in names(life_long_dfs)){
@@ -665,7 +718,7 @@ for (outcome in c("dTGMV", "dTCV", "dLVV",  "dHCV", "dAV")) {
                                                        each = 2), c("_lower_95_CI", "_upper_95_CI")), suffix)] <- as.vector(boot_res)
   }
 }
-# iterate over no wmhv dfs
+# iterate over wmhv dfs
 
 for (df_name in names(life_long_wmhv_dfs)){
   df <- life_long_wmhv_dfs[[df_name]] 
@@ -689,8 +742,9 @@ for (df_name in names(life_long_wmhv_dfs)){
 }
 
 ############ Section 2.2: Calculation of PDs #######################
+############ Section 2.2.1: Calculation of directed PDs #######################
 # prepare a list to store the pd_matrices
-life_pd_matrices <- list()
+life_dir_pd_matrices <- list()
 # iterate over ROIs
 for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
   # iterate over datasets
@@ -726,7 +780,7 @@ for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
     # turn into percentage values
     mean_pd_mat <- mean_pd_mat*100
     # save variables to list
-    life_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
+    life_dir_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
   }
 }
 # iterate over WMHV dfs
@@ -762,7 +816,84 @@ for (df_name in names(life_wide_wmhv_dfs)){
   # turn into percentage values
   mean_pd_mat <- mean_pd_mat*100
   # save variables to list
-  life_pd_matrices[[paste0("WMHV_mean_pd_mat",suffix)]] <- mean_pd_mat
+  life_dir_pd_matrices[[paste0("WMHV_mean_pd_mat",suffix)]] <- mean_pd_mat
+}
+
+############ Section 2.2.2: Calculation of undirected PDs #######################
+# prepare a list to store the pd_matrices
+life_undir_pd_matrices <- list()
+# iterate over ROIs
+for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
+  # iterate over datasets
+  for (df_name in names(life_wide_dfs)){
+    df <- life_wide_dfs[[df_name]]
+    suffix <- substring(df_name,8)
+    # get names of relevant cols
+    roi_cols <- grep(paste0("d", outcome), colnames(df), value = TRUE)
+    # initialize empty matrix
+    mean_pd_mat <- matrix(
+      NA_real_,
+      nrow = length(roi_cols),
+      ncol = length(roi_cols),
+      dimnames = list(roi_cols, roi_cols)
+    )
+    # fill upper triangle
+    for (i in seq_along(roi_cols)) {
+      for (j in seq_along(roi_cols)) {
+        if (i < j) {
+          # extract all values in the 2 relevant cols
+          col1 <- df[[roi_cols[i]]]
+          col2 <- df[[roi_cols[j]]]
+          # calculate a vector of PDs
+          # a negative value indicates that the values of the batch given by the rowname is smaller 
+          pd <- abs((2 * (col1 - col2))) / (abs(col1) + abs(col2))
+          # calculate the mean PD between the two batches 
+          mean_pd_mat[i, j] <- mean(pd, na.rm = TRUE)
+        }
+      }
+    }
+    # mirror the inverse to lower triangle
+    mean_pd_mat[lower.tri(mean_pd_mat)] <- t(mean_pd_mat)[lower.tri(mean_pd_mat)] * (-1)
+    # turn into percentage values
+    mean_pd_mat <- mean_pd_mat*100
+    # save variables to list
+    life_undir_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
+  }
+}
+# iterate over WMHV dfs
+for (df_name in names(life_wide_wmhv_dfs)){
+  df <- life_wide_wmhv_dfs[[df_name]]
+  suffix <- substring(df_name,13)
+  # get names of relevant cols
+  roi_cols <- grep("^d", colnames(df), value = TRUE)
+  # initialize empty matrix
+  mean_pd_mat <- matrix(
+    NA_real_,
+    nrow = length(roi_cols),
+    ncol = length(roi_cols),
+    dimnames = list(roi_cols, roi_cols)
+  )
+  # fill upper triangle
+  for (i in seq_along(roi_cols)) {
+    for (j in seq_along(roi_cols)) {
+      if (i < j) {
+        # extract all values in the 2 relevant cols
+        col1 <- df[[roi_cols[i]]]
+        col2 <- df[[roi_cols[j]]]
+        # calculate a vector of PDs
+        # a negative value indicates that the values of the batch given by the rowname is smaller 
+        pd <- abs((2 * (col1 - col2))) / (abs(col1) + abs(col2))
+        # calculate the mean PD between the two batches (NAs exist because 5 participants were not scanned on both scanners)
+        mean_pd_mat[i, j] <- mean(pd, na.rm = TRUE)
+      }
+    }
+  }
+  # mirror the inverse to lower triangle
+  mean_pd_mat[lower.tri(mean_pd_mat)] <- t(mean_pd_mat)[lower.tri(mean_pd_mat)] * (-1)
+  # turn into percentage values
+  mean_pd_mat <- mean_pd_mat*100
+  # save variables to list
+  life_undir_pd_matrices[[paste0("WMHV_mean_pd_mat",suffix)]] <- mean_pd_mat
 }
 
 ############ Section 2.3: Calculation of t-tests #######################
@@ -806,7 +937,7 @@ for (outcome in c("dTGMV", "dTCV", "dLVV",  "dHCV", "dAV")) {
     y_coord_b <- -sd_val/2
     plt <- bland.altman.plot(group1 = df[[cols[1]]], group2 = df[[cols[2]]], 
                              graph.sys = "ggplot2", conf.int=.95, pch=19)
-    plt <- plt + labs(title = paste0(cols[1], " vs. ", cols[2])) + theme_bw(base_family = "garamond") + theme(plot.title = element_text(family = "garamond", hjust = 0.5, size = 13))
+    plt <- plt + labs(title = paste0(cols[1], " vs. ", cols[2])) + theme_bw(base_family = "Helvetica") + theme(plot.title = element_text(family = "Helvetica", hjust = 0.5, size = 13))
     # add line to idicate size of SD
     plt <- plt + 
       geom_segment(
@@ -936,8 +1067,9 @@ for (df_name in names(tp_life_wmhv_dfs)){
 
 
 ############ Section 3.1.2: Calculation of PDs ####################### 
+############ Section 3.1.2.1: Calculation of directed PDs ####################### 
 # prepare a list to store the pd_matrices
-tp_life_pd_matrices <- list()
+tp_life_dir_pd_matrices <- list()
 # iterate over ROIs
 for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
   # iterate over datasets
@@ -973,7 +1105,7 @@ for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
     # turn into percentage values
     mean_pd_mat <- mean_pd_mat*100
     # save variables to list
-    tp_life_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
+    tp_life_dir_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
   }
 }
 
@@ -1010,7 +1142,85 @@ for (df_name in names(tp_life_wmhv_wide_dfs)){
   # turn into percentage values
   mean_pd_mat <- mean_pd_mat*100
   # save variables to list
-  tp_life_pd_matrices[[paste0("WMHV_mean_pd_mat",suffix)]] <- mean_pd_mat
+  tp_life_dir_pd_matrices[[paste0("WMHV_mean_pd_mat",suffix)]] <- mean_pd_mat
+}
+
+############ Section 3.1.2.1: Calculation of undirected PDs ####################### 
+# prepare a list to store the pd_matrices
+tp_life_undir_pd_matrices <- list()
+# iterate over ROIs
+for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
+  # iterate over datasets
+  for (df_name in names(tp_life_wide_dfs)){
+    df <- tp_life_wide_dfs[[df_name]]
+    suffix <- substring(df_name,8)
+    # get names of relevant cols
+    roi_cols <- grep(outcome, colnames(df), value = TRUE)
+    # initialize empty matrix
+    mean_pd_mat <- matrix(
+      NA_real_,
+      nrow = length(roi_cols),
+      ncol = length(roi_cols),
+      dimnames = list(roi_cols, roi_cols)
+    )
+    # fill upper triangle
+    for (i in seq_along(roi_cols)) {
+      for (j in seq_along(roi_cols)) {
+        if (i < j) {
+          # extract all values in the 2 relevant cols
+          col1 <- df[[roi_cols[i]]]
+          col2 <- df[[roi_cols[j]]]
+          # calculate a vector of PDs
+          # a negative value indicates that the values of the batch given by the rowname is smaller 
+          pd <- abs((2 * (col1 - col2))) / (abs(col1) + abs(col2))
+          # calculate the mean PD between the two batches (NAs exist because 5 participants were not scanned on both scanners)
+          mean_pd_mat[i, j] <- mean(pd, na.rm = TRUE)
+        }
+      }
+    }
+    # mirror the inverse to lower triangle
+    mean_pd_mat[lower.tri(mean_pd_mat)] <- t(mean_pd_mat)[lower.tri(mean_pd_mat)] * (-1)
+    # turn into percentage values
+    mean_pd_mat <- mean_pd_mat*100
+    # save variables to list
+    tp_life_undir_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
+  }
+}
+
+# iterate over WMHV dfs
+for (df_name in names(tp_life_wmhv_wide_dfs)){
+  df <- tp_life_wmhv_wide_dfs[[df_name]]
+  suffix <- substring(df_name,13)
+  # get names of relevant cols
+  roi_cols <- c("samseg", "lst")
+  # initialize empty matrix
+  mean_pd_mat <- matrix(
+    NA_real_,
+    nrow = length(roi_cols),
+    ncol = length(roi_cols),
+    dimnames = list(roi_cols, roi_cols)
+  )
+  # fill upper triangle
+  for (i in seq_along(roi_cols)) {
+    for (j in seq_along(roi_cols)) {
+      if (i < j) {
+        # extract all values in the 2 relevant cols
+        col1 <- df[[roi_cols[i]]]
+        col2 <- df[[roi_cols[j]]]
+        # calculate a vector of PDs
+        # a negative value indicates that the values of the batch given by the rowname is smaller 
+        pd <- abs((2 * (col1 - col2))) / (abs(col1) + abs(col2))
+        # calculate the mean PD between the two batches (NAs exist because 5 participants were not scanned on both scanners)
+        mean_pd_mat[i, j] <- mean(pd, na.rm = TRUE)
+      }
+    }
+  }
+  # mirror the inverse to lower triangle
+  mean_pd_mat[lower.tri(mean_pd_mat)] <- t(mean_pd_mat)[lower.tri(mean_pd_mat)] * (-1)
+  # turn into percentage values
+  mean_pd_mat <- mean_pd_mat*100
+  # save variables to list
+  tp_life_undir_pd_matrices[[paste0("WMHV_mean_pd_mat",suffix)]] <- mean_pd_mat
 }
 
 
@@ -1053,7 +1263,7 @@ for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
     y_coord_b <- -sd_val/2
     plt <- bland.altman.plot(group1 = df[[cols[1]]], group2 = df[[cols[2]]], 
                              graph.sys = "ggplot2", conf.int=.95, pch=19)
-    plt <- plt + labs(title = paste0(cols[1], " vs. ", cols[2])) + theme_bw(base_family = "garamond") + theme(plot.title = element_text(hjust = 0.5, size = 13))
+    plt <- plt + labs(title = paste0(cols[1], " vs. ", cols[2])) + theme_bw(base_family = "Helvetica") + theme(plot.title = element_text(hjust = 0.5, size = 13))
     plt <- plt + 
       geom_segment(
         x = x_coord, xend = x_coord,
@@ -1073,23 +1283,28 @@ for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
 }
 ############ Section 3.2 immediately harmonized change values ################
 # load unadjusted data
-change_life <- read_csv(file = "df_life_changes.csv")
-wmhv_change_life <- read_csv(file = "df_life_wmhv_changes.csv")
+change_life <- read_csv(file = "life/Data/df_life_changes.csv")
+colnames(change_life)[2] <- "segmentation"
+colnames(change_life)[3:7] <- gsub("d", "", colnames(change_life)[3:7])
+wmhv_change_life <- read_csv(file = "life/Data/df_life_wmhv_changes.csv")
+colnames(wmhv_change_life)[3] <- gsub("d", "", colnames(wmhv_change_life)[3])
+colnames(wmhv_change_life)[2] <- "segmentation"
 # load adjusted data
-change_life_adj <- read_csv(file = "df_life_changes_adj.csv")
+change_life_adj <- read_csv(file = "life/Data/df_life_changes_adj.csv")
 colnames(change_life_adj) <- gsub("# ", "", colnames(change_life_adj))
-wmhv_change_life_adj <- read_csv(file = "df_life_wmhv_changes_adj.csv")
-colnames(wmhv_change_life_adj) <- gsub("# ", "", colnames(wmhv_change_life_adj))
+wmhv_change_life_adj <- read_csv(file = "life/Data/df_life_wmhv_changes_adj.csv")
+colnames(wmhv_change_life_adj) <- gsub("# d", "", colnames(wmhv_change_life_adj))
 # merge adjusted data with Site info
-change_life_adj[,c("segmentation", "id")] <- change_life[,c("SITE", "id")]
-wmhv_change_life_adj[,c("segmentation", "id")] <- wmhv_change_life[,c("SITE", "id")]
-
+change_life_adj[,c("segmentation", "id")] <- change_life[,c("segmentation", "id")]
+wmhv_change_life_adj[,c("segmentation", "id")] <- wmhv_change_life[,c("segmentation", "id")]
+change_life_dfs <- list(change_life = change_life, change_life_adj = change_life_adj)
+change_life_wmhv_dfs <- list(wmhv_change_life = wmhv_change_life, wmhv_change_life_adj = wmhv_change_life_adj)
 ############ Section 3.2.1: Calculation of ICCs ####################### 
 # prepare a results df to be filled
-change_life_lme_icc_res <- data.frame(matrix(ncol = 13, nrow = 6))
-colnames(change_life_lme_icc_res) <- c("ROI", paste0(rep(c("id_var", "segmentation_var", "resdiual_var", "ICC"), each = 3), 
-                                                            c("", "_lower_95_CI", "_upper_95_CI")))
-change_life_lme_icc_res$ROI <- c("TGMV", "TCV", "LVV",  "HCV", "AV", "WMHV_norm")
+change_life_lme_icc_res <- data.frame(matrix(ncol = 13*2, nrow = 6))
+colnames(change_life_lme_icc_res) <- c("ROI", paste0(rep(paste0(rep(c("id_var", "segmentation_var", "resdiual_var", "ICC"), each = 3), 
+                                                            c("", "_lower_95_CI", "_upper_95_CI")), each = 2), c("", "_adj")))
+change_life_lme_icc_res$ROI <- c("TGMV", "TCV", "LVV",  "HCV", "AV", "WMHV")
 
 # formula for bootstrapped CIs for ICC
 icc_ci <- function(fit) {
@@ -1104,27 +1319,32 @@ icc_ci <- function(fit) {
 # calculate LMEs
 # iterate over non-wmhv_outcomes
 for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
-  formula <- as.formula(paste0(outcome, " ~ (1|id) + (1|segmentation)"))
-  # estimate model and bootstrap confidence intervals
-  print(paste0("now doing ", outcome))
-  res <- lmer(formula = formula, data = change_life_adj, control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
-  variances <- as.data.frame(VarCorr(res))
-  lme_icc <- (variances[variances$grp == "id", "vcov"])/
-    (variances[variances$grp == "id", "vcov"] + 
-       variances[variances$grp == "segmentation", "vcov"] + variances[variances$grp == "Residual", "vcov"])
-  boot_icc <- bootMer(res, FUN  = icc_ci, nsim = 1000, type = "parametric")
-  boot_res <- apply(boot_icc$t, 2, quantile, probs = c(0.025, 0.975))
-  # store the results in the appropriate columns (unadjusted/adjusted data)
-  change_life_lme_icc_res[change_life_lme_icc_res$ROI == outcome, c("id_var", "segmentation_var", "resdiual_var")] <- 
-    c(variances[variances$grp == "id", "vcov"],  
-      variances[variances$grp == "segmentation", "vcov"], variances[variances$grp == "Residual", "vcov"])
-  change_life_lme_icc_res[change_life_lme_icc_res$ROI == outcome, "ICC"] <- lme_icc
-  change_life_lme_icc_res[change_life_lme_icc_res$ROI == outcome, paste0(rep(c("id_var", "segmentation_var", "resdiual_var", "ICC"),
-                                                                            each = 2), c("_lower_95_CI", "_upper_95_CI"))] <- as.vector(boot_res)
+  for (df_name in names(change_life_dfs)){
+    df <- change_life_dfs[[df_name]] 
+    # get the suffix for storing results
+    suffix <- substring(df_name, 12)
+    formula <- as.formula(paste0(outcome, " ~ (1|id) + (1|segmentation)"))
+    # estimate model and bootstrap confidence intervals
+    print(paste0("now doing ", outcome))
+    res <- lmer(formula = formula, data = df, control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
+    variances <- as.data.frame(VarCorr(res))
+    lme_icc <- (variances[variances$grp == "id", "vcov"])/
+      (variances[variances$grp == "id", "vcov"] + 
+         variances[variances$grp == "segmentation", "vcov"] + variances[variances$grp == "Residual", "vcov"])
+    boot_icc <- bootMer(res, FUN  = icc_ci, nsim = 1000, type = "parametric")
+    boot_res <- apply(boot_icc$t, 2, quantile, probs = c(0.025, 0.975))
+    # store the results in the appropriate columns (unadjusted/adjusted data)
+    change_life_lme_icc_res[change_life_lme_icc_res$ROI == outcome, paste0(c("id_var", "segmentation_var", "resdiual_var"), suffix)] <- 
+      c(variances[variances$grp == "id", "vcov"],  
+        variances[variances$grp == "segmentation", "vcov"], variances[variances$grp == "Residual", "vcov"])
+    change_life_lme_icc_res[change_life_lme_icc_res$ROI == outcome, paste0("ICC", suffix)] <- lme_icc
+    change_life_lme_icc_res[change_life_lme_icc_res$ROI == outcome, paste0(rep(c("id_var", "segmentation_var", "resdiual_var", "ICC"),
+                                                                               each = 2), c("_lower_95_CI", "_upper_95_CI"), suffix)] <- as.vector(boot_res)
+  }
 }
 # now wmhv
 
-res <- lmer(formula = dWMHV ~ (1|id) + (1|segmentation), data = wmhv_change_life_adj, control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
+res <- lmer(formula = WMHV ~ (1|id) + (1|segmentation), data = wmhv_change_life, control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
 variances <- as.data.frame(VarCorr(res))
 lme_icc <- (variances[variances$grp == "id", "vcov"])/
   (variances[variances$grp == "id", "vcov"] + 
@@ -1132,19 +1352,34 @@ lme_icc <- (variances[variances$grp == "id", "vcov"])/
 boot_icc <- bootMer(res, FUN  = icc_ci, nsim = 1000, type = "parametric")
 boot_res <- apply(boot_icc$t, 2, quantile, probs = c(0.025, 0.975))
 # store the results in the appropriate columns (unadjusted/adjusted data)
-change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV_norm", c("id_var", "segmentation_var", "resdiual_var")] <- 
+change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV", c("id_var", "segmentation_var", "resdiual_var")] <- 
   c(variances[variances$grp == "id", "vcov"],  
     variances[variances$grp == "segmentation", "vcov"], variances[variances$grp == "Residual", "vcov"])
-change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV_norm", "ICC"] <- lme_icc
-change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV_norm", paste0(rep(c("id_var", "segmentation_var", "resdiual_var", "ICC"),
+change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV", "ICC"] <- lme_icc
+change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV", paste0(rep(c("id_var", "segmentation_var", "resdiual_var", "ICC"),
                                                                                each = 2), c("_lower_95_CI", "_upper_95_CI"))] <- as.vector(boot_res)
 
+
+res <- lmer(formula = WMHV ~ (1|id) + (1|segmentation), data = wmhv_change_life_adj, control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000)))
+variances <- as.data.frame(VarCorr(res))
+lme_icc <- (variances[variances$grp == "id", "vcov"])/
+  (variances[variances$grp == "id", "vcov"] + 
+     variances[variances$grp == "segmentation", "vcov"] + variances[variances$grp == "Residual", "vcov"])
+boot_icc <- bootMer(res, FUN  = icc_ci, nsim = 1000, type = "parametric")
+boot_res <- apply(boot_icc$t, 2, quantile, probs = c(0.025, 0.975))
+# store the results in the appropriate columns (unadjusted/adjusted data)
+change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV", paste0(c("id_var", "segmentation_var", "resdiual_var"), "_adj")] <- 
+  c(variances[variances$grp == "id", "vcov"],  
+    variances[variances$grp == "segmentation", "vcov"], variances[variances$grp == "Residual", "vcov"])
+change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV", "ICC_adj"] <- lme_icc
+change_life_lme_icc_res[change_life_lme_icc_res$ROI == "WMHV", paste0(rep(c("id_var", "segmentation_var", "resdiual_var", "ICC"),
+                                                                        each = 2), c("_lower_95_CI", "_upper_95_CI"), "_adj")] <- as.vector(boot_res)
 
 
 
 ############ Section 3.3 Scanner update WMHV ################
-df_update_wmhv <- read.csv("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/Data/wmhv_update.csv")
-df_update_wmhv_adj <- read.csv("/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/scanner_update/Data/wmhv_update_adj.csv")
+df_update_wmhv <- read.csv("scanner_update/Data/wmhv_update.csv")
+df_update_wmhv_adj <- read.csv("scanner_update/Data/wmhv_update_adj.csv")
 df_update_wmhv$WMHV_adj <- df_update_wmhv_adj$X..WMHV_norm
 df_update_wmhv_wide <- df_update_wmhv[,c("id", "SITE", "WMHV_norm", "WMHV_adj")] %>%
   pivot_wider(
@@ -1193,7 +1428,7 @@ for (outcome in c("WMHV_norm", "WMHV_adj")) {
 }
 
 ############ Section 3.3.2: Calculation of PDs #######################
-
+############ Section 3.3.2.1: Calculation of directed PDs #######################
 # iterate over ROIs
 for (outcome in c("WMHV_norm", "WMHV_adj")) {
   suffix <- ""
@@ -1229,9 +1464,47 @@ for (outcome in c("WMHV_norm", "WMHV_adj")) {
   # turn into percentage values
   mean_pd_mat <- mean_pd_mat*100
   # save variables to list
-  update_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
+  update_dir_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
 }
 
+############ Section 3.3.2.1: Calculation of undirected PDs #######################
+# iterate over ROIs
+for (outcome in c("WMHV_norm", "WMHV_adj")) {
+  suffix <- ""
+  if (outcome == "WMHV_adj"){
+    suffix <- "_adj"
+  }  
+  # get names of relevant cols
+  roi_cols <- grep(outcome, colnames(df_update_wmhv_wide), value = TRUE)
+  # initialize empty matrix
+  mean_pd_mat <- matrix(
+    NA_real_,
+    nrow = length(roi_cols),
+    ncol = length(roi_cols),
+    dimnames = list(roi_cols, roi_cols)
+  )
+  # fill upper triangle
+  for (i in seq_along(roi_cols)) {
+    for (j in seq_along(roi_cols)) {
+      if (i < j) {
+        # extract all values in the 2 relevant cols
+        col1 <- df_update_wmhv_wide[[roi_cols[i]]]
+        col2 <- df_update_wmhv_wide[[roi_cols[j]]]
+        # calculate a vector of PDs
+        # a negative value indicates that the values of the batch given by the rowname is smaller 
+        pd <- abs((2 * (col1 - col2))) / (abs(col1) + abs(col2))
+        # calculate the mean PD between the two batches (NAs exist because 5 participants were not scanned on both scanners)
+        mean_pd_mat[i, j] <- mean(pd, na.rm = TRUE)
+      }
+    }
+  }
+  # mirror the inverse to lower triangle
+  mean_pd_mat[lower.tri(mean_pd_mat)] <- t(mean_pd_mat)[lower.tri(mean_pd_mat)] * (-1)
+  # turn into percentage values
+  mean_pd_mat <- mean_pd_mat*100
+  # save variables to list
+  update_undir_pd_matrices[[paste0(outcome, "_mean_pd_mat",suffix)]] <- mean_pd_mat
+}
 
 ############ Section 3.3.3: Calculation of pairwise t-tests #######################
 
@@ -1264,7 +1537,7 @@ for (outcome in c("WMHV_norm", "WMHV_adj")) {
   y_coord_b <- -sd_val/2
   plt <- bland.altman.plot(group1 = df_update_wmhv_wide[[cols[1]]], group2 = df_update_wmhv_wide[[cols[2]]], 
                            graph.sys = "ggplot2", conf.int=.95, pch=19)
-  plt <- plt + labs(title = paste0(cols[1], " vs. ", cols[2])) + theme(plot.title = element_text(size = 12), base_family = "garamond")
+  plt <- plt + labs(title = paste0(cols[1], " vs. ", cols[2])) + theme(plot.title = element_text(size = 12), base_family = "Helvetica")
   # add line to idicate size of SD
   plt <- plt + 
     geom_segment(
@@ -1279,13 +1552,56 @@ unharm_plot <- update_ba_plots[["WMHV_norm"]] + labs(title = paste0("WMHV SKYRA 
 nh_plot <- update_ba_plots[["WMHV_adj"]] + labs(title = paste0("WMHV SKYRA vs. WMHV VERIO harmonized")) 
 plots <- wrap_plots(list(unharm_plot, nh_plot), nrow = 2, )
 update_ba_plot_comparisons[["WMHV"]] <- plots 
+############ Section 4 Variances tests #################
+############ Section 4.1 Levene's test in the cross-sectional data ##################
+levene_update <- data.frame(matrix(ncol = 4, nrow = 7*2))
+colnames(levene_update) <- c("df", "outcome", "fval", "pval")
+levene_update$outcome <- c("TIV", "TGMV", "TWMV", "TCV", "LVV",  "HCV", "AV")
+levene_update$df <- rep(c("", "_adj"), each = 7)
+for (df_name in names(update_dfs[1:2])){
+  df <- update_dfs[[df_name]]
+  suffix <- substring(df_name, 10)
+  for (outcome in c("TIV", "TGMV", "TWMV", "TCV", "LVV",  "HCV", "AV")) {
+    levres <- leveneTest(as.formula(paste0(outcome, " ~ SITE")), data = df)
+    levene_update[levene_update$df == suffix & levene_update$outcome == outcome, 3:4] <- as.data.frame(levres)[1,2:3]
+  }
+}
+############ Section 4.2 Levene's test in the longitudinal data ##################
+levene_life <- data.frame(matrix(ncol = 4, nrow = 5*3))
+colnames(levene_life) <- c("df", "outcome", "fval", "pval")
+levene_life$outcome <- c("dTGMV", "dTCV", "dLVV",  "dHCV", "dAV")
+levene_life$df <- rep(c("", "_combat", "_nh"), each = 5)
+for (df_name in names(life_long_dfs[1:3])){
+  df <- life_long_dfs[[df_name]]
+  suffix <- substring(df_name,8)
+  for (outcome in c("dTGMV", "dTCV", "dLVV",  "dHCV", "dAV")) {
+    levres <- leveneTest(as.formula(paste0(outcome, " ~ segmentation")), data = df)
+    levene_life[levene_life$df == suffix & levene_life$outcome == outcome, 3:4] <- as.data.frame(levres)[1,2:3]
+  }
+}
+############ Section 4.2 Levene's test in the normally harmonized BL/FU data ##################
+levene_life_tp <- data.frame(matrix(ncol = 4, nrow = 5*3*2))
+colnames(levene_life_tp) <- c("df", "outcome", "fval", "pval")
+levene_life_tp$outcome <- rep(c("TGMV", "TCV", "LVV",  "HCV", "AV"), 6)
+levene_life_tp$df <- rep(c("bl", "combat_bl", "nh_bl", "fu", "combat_fu", "nh_fu"), each = 5)
+for (df_name in names(tp_life_dfs)){
+  df <- tp_life_dfs[[df_name]]
+  suffix <- substring(df_name,9)
+  for (outcome in c("TGMV", "TCV", "LVV",  "HCV", "AV")) {
+    levres <- leveneTest(as.formula(paste0(outcome, " ~ segmentation")), data = df)
+    levene_life_tp[levene_life_tp$df == suffix & levene_life_tp$outcome == outcome, 3:4] <- as.data.frame(levres)[1,2:3]
+  }
+}
+
+
 ############ save outcomes #################
-outcomes <- list(update_lme_icc_res = update_lme_icc_res, update_pd_matrices = update_pd_matrices, update_anova_res = update_anova_res, 
+outcomes <- list(update_lme_icc_res = update_lme_icc_res, update_dir_pd_matrices = update_dir_pd_matrices, update_undir_pd_matrices = update_undir_pd_matrices, update_anova_res = update_anova_res, 
                  update_pwcs = update_pwcs, update_iced_res = update_iced_res, life_lme_icc_res = life_lme_icc_res, 
-                 life_pd_matrices = life_pd_matrices, life_pwcs = life_pwcs, tp_life_lme_icc_res = tp_life_lme_icc_res, 
-                 tp_life_pd_matrices = tp_life_pd_matrices, tp_life_pwcs = tp_life_pwcs, change_life_lme_icc_res = change_life_lme_icc_res)
+                 life_dir_pd_matrices = life_dir_pd_matrices, life_undir_pd_matrices = life_undir_pd_matrices, life_pwcs = life_pwcs, tp_life_lme_icc_res = tp_life_lme_icc_res, 
+                 tp_life_dir_pd_matrices = tp_life_dir_pd_matrices, tp_life_undir_pd_matrices = tp_life_undir_pd_matrices, tp_life_pwcs = tp_life_pwcs, change_life_lme_icc_res = change_life_lme_icc_res,
+                 levene_life = levene_life, levene_update = levene_update, levene_life_tp = levene_life_tp)
 ba_plots <- list(update_ba_plots = update_ba_plots, life_ba_plots = life_ba_plots, update_ba_plot_comparisons = update_ba_plot_comparisons, wrapped_life_ba_plots = wrapped_life_ba_plots,
                  tp_life_ba_plots = tp_life_ba_plots, tp_wrapped_life_ba_plots = tp_wrapped_life_ba_plots)
 
-save(outcomes, file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/Results/outcomes.RData")
-save(ba_plots, file = "/data/pt_life/ResearchProjects/LLammer/intergeneration/segmentation_harmonization/Results/ba_plots.RData")
+save(outcomes, file = "Results/outcomes.RData")
+save(ba_plots, file = "Results/ba_plots.RData")
